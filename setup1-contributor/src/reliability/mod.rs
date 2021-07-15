@@ -10,6 +10,7 @@ use setup1_shared::reliability::{
     CoordinatorMessageName,
     MAXIMUM_MESSAGE_SIZE,
 };
+use snarkos_toolkit::account::PrivateKey;
 use tokio_tungstenite::{
     connect_async_with_config,
     tungstenite::protocol::{Message, WebSocketConfig},
@@ -24,7 +25,7 @@ mod latency;
 
 /// Builds a request with authorization header to initialize
 /// a WebSocket handshake later
-fn prepare_request(api_url: &Url, api_path: &str, private_key: &str) -> Result<Request<()>> {
+fn prepare_request(api_url: &Url, api_path: &str, private_key: &PrivateKey) -> Result<Request<()>> {
     let mut url = api_url.join(api_path)?;
     url.set_scheme("ws")
         .map_err(|e| anyhow!("Failed to set url scheme to ws: {:?}", e))?;
@@ -41,7 +42,7 @@ fn prepare_request(api_url: &Url, api_path: &str, private_key: &str) -> Result<R
 
 /// Check reliability score before starting
 /// to contribute
-pub(crate) async fn check(api_base_url: &Url, private_key: &str) -> Result<()> {
+pub(crate) async fn check(api_base_url: &Url, private_key: &PrivateKey) -> Result<()> {
     let api_path = "/v1/contributor/reliability";
     let request = prepare_request(api_base_url, api_path, private_key)?;
 

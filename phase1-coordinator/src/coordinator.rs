@@ -328,6 +328,8 @@ pub struct Coordinator {
     state: Arc<RwLock<CoordinatorState>>,
     /// The source of time, allows mocking system time for testing.
     time: Arc<dyn TimeSource>,
+    /// Callback to call after aggregation is done
+    aggregation_callback: Arc<dyn Fn(Vec<Participant>) -> () + Send + Sync>,
 }
 
 impl Coordinator {
@@ -363,8 +365,18 @@ impl Coordinator {
             signature: Arc::new(signature),
             storage: Arc::new(RwLock::new(storage)),
             state: Arc::new(RwLock::new(state)),
+            aggregation_callback: Arc::new(|_| ()),
             time,
         })
+    }
+
+    ///
+    /// Set a callback which will be called after the round is aggregated.
+    /// Current round finished contributors will be passed to a callback
+    /// as an argument
+    ///
+    pub fn set_aggregation_callback(&mut self, callback: Arc<dyn Fn(Vec<Participant>) -> () + Send + Sync>) {
+        self.aggregation_callback = callback;
     }
 
     ///
@@ -475,6 +487,15 @@ impl Coordinator {
                 // Update the metrics for the current round and participants.
                 state.update_round_metrics();
                 state.save(&mut storage)?;
+
+                match state.current_round_finished_contributors() {
+                    Ok(contributors) => {
+                        (self.aggregation_callback)(contributors);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to get current round finished contributors: {}", e);
+                    }
+                }
             }
 
             // Acquire the state read lock.

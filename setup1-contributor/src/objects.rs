@@ -65,11 +65,3 @@ pub struct ContributionUploadUrl {
     pub participant_id: String,
     pub write_url: String,
 }
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct AleoSetupKeys {
-    pub encrypted_seed: String,
-    pub encrypted_private_key: String,
-    pub address: String,
-}

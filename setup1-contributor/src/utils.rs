@@ -137,12 +137,11 @@ pub fn create_parameters_for_chunk<E: PairingEngine>(
 }
 
 pub fn get_authorization_value<R: Rng + CryptoRng>(
-    private_key: &str,
+    private_key: &PrivateKey,
     method: &str,
     path: &str,
     rng: &mut R,
 ) -> Result<String> {
-    let private_key = PrivateKey::from_str(private_key)?;
     let view_key = ViewKey::from(&private_key)?;
     let address = Address::from(&private_key)?.to_string();
     let message = format!("{} {}", method.to_lowercase(), path.to_lowercase());

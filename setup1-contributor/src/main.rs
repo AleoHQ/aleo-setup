@@ -9,6 +9,7 @@ mod commands;
 mod errors;
 mod objects;
 mod reliability;
+mod setup_keys;
 mod tasks;
 mod utils;
 

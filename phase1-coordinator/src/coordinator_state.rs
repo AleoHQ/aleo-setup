@@ -1040,6 +1040,20 @@ impl CoordinatorState {
                 .contains_key(participant)
     }
 
+    pub fn current_round_finished_contributors(&self) -> anyhow::Result<Vec<Participant>> {
+        let current_round_height = self
+            .current_round_height
+            .ok_or_else(|| anyhow::anyhow!("Current round height is None"))?;
+        let contributors = self
+            .finished_contributors
+            .get(&current_round_height)
+            .ok_or_else(|| anyhow::anyhow!("There are no finished contributors for round {}", current_round_height))?
+            .keys()
+            .cloned()
+            .collect();
+        Ok(contributors)
+    }
+
     ///
     /// Returns `true` if the given participant is a contributor managed
     /// by the coordinator.
