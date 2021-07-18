@@ -2,7 +2,7 @@ use crate::{
     authentication::Signature,
     commands::SigningKey,
     environment::Environment,
-    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageLock},
+    storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters, PublicKey};
@@ -23,8 +23,8 @@ impl Verification {
     #[inline]
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut StorageLock,
-        signature: Arc<Box<dyn Signature>>,
+        storage: &mut impl Storage,
+        signature: Arc<dyn Signature>,
         signing_key: &SigningKey,
         round_height: u64,
         chunk_id: u64,
@@ -148,7 +148,7 @@ impl Verification {
     #[inline]
     fn verification(
         environment: &Environment,
-        storage: &mut StorageLock,
+        storage: &mut impl Storage,
         chunk_id: u64,
         challenge_locator: Locator,
         response_locator: Locator,
@@ -336,10 +336,12 @@ impl Verification {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::{
         authentication::Dummy,
         commands::{Computation, Seed, Verification, SEED_LENGTH},
-        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageLock},
+        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage},
         testing::prelude::*,
         Coordinator,
     };
@@ -353,8 +355,7 @@ mod tests {
     fn test_verification_run() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy)).unwrap();
-        let test_storage = coordinator.storage();
+        let mut coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Arc::new(Dummy)).unwrap();
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let contributor_signing_key = "secret_key".to_string();
@@ -363,12 +364,9 @@ mod tests {
         let verifier_signing_key = "secret_key".to_string();
 
         {
-            // Acquire the storage write lock.
-            let mut storage = StorageLock::Write(test_storage.write().unwrap());
-
             // Run initialization.
             info!("Initializing ceremony");
-            let round_height = coordinator.run_initialization(&mut storage, Utc::now()).unwrap();
+            let round_height = coordinator.run_initialization(Utc::now()).unwrap();
             info!("Initialized ceremony");
 
             // Check current round height is now 0.
@@ -377,7 +375,7 @@ mod tests {
             let contributors = vec![contributor.clone()];
             let verifiers = vec![verifier.clone()];
             coordinator
-                .next_round(&mut storage, *TEST_STARTED_AT, contributors, verifiers)
+                .next_round(*TEST_STARTED_AT, contributors, verifiers)
                 .unwrap();
         }
 
@@ -388,9 +386,6 @@ mod tests {
         let round_height = coordinator.current_round_height().unwrap();
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
         let is_final = true;
-
-        // Obtain the storage lock.
-        let mut storage = StorageLock::Write(test_storage.write().unwrap());
 
         for chunk_id in 0..number_of_chunks {
             // Fetch the challenge locator.
@@ -403,6 +398,9 @@ mod tests {
             let contribution_file_signature_locator = &Locator::ContributionFileSignature(
                 ContributionSignatureLocator::new(round_height, chunk_id, 1, false),
             );
+
+            let signature = coordinator.signature();
+            let storage = coordinator.storage_mut();
 
             if !storage.exists(response_locator) {
                 let expected_filesize = Object::contribution_file_size(&TEST_ENVIRONMENT_3, chunk_id, false);
@@ -420,8 +418,8 @@ mod tests {
             rand::thread_rng().fill_bytes(&mut seed[..]);
             Computation::run(
                 &TEST_ENVIRONMENT_3,
-                &mut storage,
-                coordinator.signature(),
+                storage,
+                signature.clone(),
                 &contributor_signing_key,
                 challenge_locator,
                 response_locator,
@@ -433,8 +431,8 @@ mod tests {
             // Run verification on chunk.
             Verification::run(
                 &TEST_ENVIRONMENT_3,
-                &mut storage,
-                coordinator.signature(),
+                storage,
+                signature,
                 &verifier_signing_key,
                 round_height,
                 chunk_id,

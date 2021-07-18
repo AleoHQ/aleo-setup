@@ -2503,7 +2503,7 @@ dependencies = [
  "algebra",
  "anyhow",
  "chrono",
- "ctrlc",
+ "futures 0.3.8",
  "hex",
  "itertools",
  "memmap",

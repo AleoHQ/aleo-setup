@@ -3,7 +3,7 @@ use crate::{
     commands::{Seed, SigningKey, SEED_LENGTH},
     environment::{Environment, Parameters, Settings, Testing},
     objects::Task,
-    storage::Storage,
+    storage::{Disk, Storage},
     testing::prelude::*,
     Coordinator,
     CoordinatorError,
@@ -53,7 +53,7 @@ struct ContributorTestDetails {
 }
 
 impl ContributorTestDetails {
-    fn contribute_to(&self, coordinator: &Coordinator) -> Result<(), CoordinatorError> {
+    fn contribute_to(&self, coordinator: &mut Coordinator<Disk>) -> Result<(), CoordinatorError> {
         coordinator.contribute(&self.participant, &self.signing_key, &self.seed)
     }
 }
@@ -73,7 +73,7 @@ struct VerifierTestDetails {
 }
 
 impl VerifierTestDetails {
-    fn verify(&self, coordinator: &Coordinator) -> anyhow::Result<()> {
+    fn verify(&self, coordinator: &mut Coordinator<Disk>) -> anyhow::Result<()> {
         coordinator.verify(&self.participant, &self.signing_key)
     }
 }
@@ -99,7 +99,7 @@ fn execute_round(proving_system: ProvingSystem, curve: CurveKind) -> anyhow::Res
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -207,7 +207,7 @@ fn coordinator_drop_contributor_basic() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -325,7 +325,7 @@ fn coordinator_drop_contributor_in_between_two_contributors() -> anyhow::Result<
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -454,7 +454,7 @@ fn coordinator_drop_contributor_with_contributors_in_pending_tasks() -> anyhow::
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -613,7 +613,7 @@ fn coordinator_drop_contributor_locked_chunks() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -778,7 +778,7 @@ fn coordinator_drop_contributor_removes_contributions() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -906,7 +906,7 @@ fn coordinator_drop_contributor_clear_locks() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -1104,7 +1104,7 @@ fn coordinator_drop_contributor_removes_subsequent_contributions() -> anyhow::Re
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -1188,7 +1188,7 @@ fn coordinator_drop_contributor_and_release_locks() {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy)).unwrap();
 
     // Initialize the ceremony to round 0.
     coordinator.initialize().unwrap();
@@ -1213,10 +1213,10 @@ fn coordinator_drop_contributor_and_release_locks() {
 
     // Contribute to the round 1
     for _ in 0..number_of_chunks {
-        replacement_contributor.contribute_to(&coordinator).unwrap();
-        contributor_2.contribute_to(&coordinator).unwrap();
-        verifier_1.verify(&coordinator).unwrap();
-        verifier_1.verify(&coordinator).unwrap();
+        replacement_contributor.contribute_to(&mut coordinator).unwrap();
+        contributor_2.contribute_to(&mut coordinator).unwrap();
+        verifier_1.verify(&mut coordinator).unwrap();
+        verifier_1.verify(&mut coordinator).unwrap();
     }
 
     // Add some more participants to proceed to the next round
@@ -1263,7 +1263,7 @@ fn coordinator_drop_several_contributors() {
     let environment = initialize_test_environment(&testing.into());
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy)).unwrap();
 
     // Initialize the ceremony to round 0.
     coordinator.initialize().unwrap();
@@ -1286,22 +1286,19 @@ fn coordinator_drop_several_contributors() {
     // Make some contributions
     let k = 3;
     for _ in 0..k {
-        contributor_1.contribute_to(&coordinator).unwrap();
-        contributor_2.contribute_to(&coordinator).unwrap();
-        contributor_3.contribute_to(&coordinator).unwrap();
+        contributor_1.contribute_to(&mut coordinator).unwrap();
+        contributor_2.contribute_to(&mut coordinator).unwrap();
+        contributor_3.contribute_to(&mut coordinator).unwrap();
 
-        verifier_1.verify(&coordinator).unwrap();
-        verifier_1.verify(&coordinator).unwrap();
-        verifier_1.verify(&coordinator).unwrap();
+        verifier_1.verify(&mut coordinator).unwrap();
+        verifier_1.verify(&mut coordinator).unwrap();
+        verifier_1.verify(&mut coordinator).unwrap();
     }
-
-    let storage_lock = coordinator.storage();
 
     {
         let round = coordinator.current_round().unwrap();
-        let storage_read = storage_lock.read().unwrap();
-        let storage = &*storage_read;
-        check_round_matches_storage_files(&**storage, &round);
+        let storage = coordinator.storage();
+        check_round_matches_storage_files(storage, &round);
     }
 
     let _locators = coordinator.drop_participant(&contributor_1.participant).unwrap();
@@ -1311,21 +1308,20 @@ fn coordinator_drop_several_contributors() {
 
     {
         let round = coordinator.current_round().unwrap();
-        let storage_read = storage_lock.read().unwrap();
-        let storage = &*storage_read;
-        check_round_matches_storage_files(&**storage, &round);
+        let storage = coordinator.storage();
+        check_round_matches_storage_files(storage, &round);
     }
 
     fn contribute_verify_until_no_tasks(
         contributor: &ContributorTestDetails,
         verifier: &VerifierTestDetails,
-        coordinator: &Coordinator,
+        coordinator: &mut Coordinator<Disk>,
     ) -> anyhow::Result<bool> {
         match contributor.contribute_to(coordinator) {
             Err(CoordinatorError::ParticipantHasNoRemainingTasks) => Ok(true),
             Err(CoordinatorError::PreviousContributionMissing { current_task: _ }) => Ok(false),
             Ok(_) => {
-                verifier.verify(&coordinator)?;
+                verifier.verify(coordinator)?;
                 Ok(false)
             }
             Err(error) => return Err(error.into()),
@@ -1336,11 +1332,11 @@ fn coordinator_drop_several_contributors() {
     let mut all_complete = false;
     let mut count = 0;
     while !all_complete {
-        let c3_complete = contribute_verify_until_no_tasks(&contributor_3, &verifier_1, &coordinator).unwrap();
+        let c3_complete = contribute_verify_until_no_tasks(&contributor_3, &verifier_1, &mut coordinator).unwrap();
         let rc1_complete =
-            contribute_verify_until_no_tasks(&replacement_contributor_1, &verifier_1, &coordinator).unwrap();
+            contribute_verify_until_no_tasks(&replacement_contributor_1, &verifier_1, &mut coordinator).unwrap();
         let rc2_complete =
-            contribute_verify_until_no_tasks(&replacement_contributor_2, &verifier_1, &coordinator).unwrap();
+            contribute_verify_until_no_tasks(&replacement_contributor_2, &verifier_1, &mut coordinator).unwrap();
 
         all_complete = c3_complete && rc1_complete && rc2_complete;
         count += 1;
@@ -1370,7 +1366,7 @@ fn coordinator_drop_several_contributors() {
     assert_eq!(0, coordinator.number_of_queue_verifiers());
 }
 
-fn check_round_matches_storage_files(storage: &dyn Storage, round: &Round) {
+fn check_round_matches_storage_files(storage: &impl Storage, round: &Round) {
     debug!("Checking round {}", round.round_height());
     for chunk in round.chunks() {
         debug!("Checking chunk {}", chunk.chunk_id());
@@ -1476,7 +1472,7 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy)).unwrap();
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy)).unwrap();
 
     // Initialize the ceremony to round 0.
     coordinator.initialize().unwrap();
@@ -1493,18 +1489,18 @@ fn coordinator_drop_contributor_and_update_verifier_tasks() {
     // Update the ceremony to round 1.
     coordinator.update().unwrap();
 
-    contributor_1.contribute_to(&coordinator).unwrap();
+    contributor_1.contribute_to(&mut coordinator).unwrap();
 
-    verifier_1.verify(&coordinator).unwrap();
+    verifier_1.verify(&mut coordinator).unwrap();
 
     coordinator.drop_participant(&contributor_1.participant).unwrap();
 
     // Contribute to the round 1
     for _ in 0..number_of_chunks {
-        replacement_contributor.contribute_to(&coordinator).unwrap();
-        contributor_2.contribute_to(&coordinator).unwrap();
-        verifier_1.verify(&coordinator).unwrap();
-        verifier_1.verify(&coordinator).unwrap();
+        replacement_contributor.contribute_to(&mut coordinator).unwrap();
+        contributor_2.contribute_to(&mut coordinator).unwrap();
+        verifier_1.verify(&mut coordinator).unwrap();
+        verifier_1.verify(&mut coordinator).unwrap();
     }
 
     // Add some more participants to proceed to the next round
@@ -1548,7 +1544,7 @@ fn coordinator_drop_multiple_contributors() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -1707,7 +1703,7 @@ fn try_lock_blocked() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -1827,7 +1823,7 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment.clone(), Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment.clone(), Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -1869,8 +1865,8 @@ fn drop_all_contributors_and_complete_round() -> anyhow::Result<()> {
 
     // Contribute to the round 1
     for _ in 0..number_of_chunks {
-        replacement_contributor_1.contribute_to(&coordinator)?;
-        replacement_contributor_2.contribute_to(&coordinator)?;
+        replacement_contributor_1.contribute_to(&mut coordinator)?;
+        replacement_contributor_2.contribute_to(&mut coordinator)?;
         coordinator.verify(&verifier, &verifier_signing_key)?;
         coordinator.verify(&verifier, &verifier_signing_key)?;
     }
@@ -1907,7 +1903,7 @@ fn drop_contributor_and_reassign_tasks() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new(environment, Box::new(Dummy))?;
+    let mut coordinator = Coordinator::new(environment, Arc::new(Dummy))?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -1991,7 +1987,7 @@ fn contributor_timeout_drop_test() -> anyhow::Result<()> {
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -2053,7 +2049,7 @@ fn contributor_wait_verifier_test() -> anyhow::Result<()> {
     let number_of_chunks = environment.number_of_chunks() as usize;
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;
@@ -2128,7 +2124,7 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     let environment = initialize_test_environment(&Environment::from(testing_deployment));
 
     // Instantiate a coordinator.
-    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+    let mut coordinator = Coordinator::new_with_time(environment, Arc::new(Dummy), time.clone())?;
 
     // Initialize the ceremony to round 0.
     coordinator.initialize()?;

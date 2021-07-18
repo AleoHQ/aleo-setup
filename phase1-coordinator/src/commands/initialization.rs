@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    storage::{ContributionLocator, Locator, Object, StorageLock},
+    storage::{ContributionLocator, Locator, Object, Storage},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -22,7 +22,7 @@ impl Initialization {
     #[inline]
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut StorageLock,
+        storage: &mut impl Storage,
         round_height: u64,
         chunk_id: u64,
     ) -> anyhow::Result<Vec<u8>> {
@@ -99,7 +99,7 @@ impl Initialization {
     /// Compute both contribution hashes and check for equivalence.
     #[inline]
     fn check_hash(
-        storage: &StorageLock,
+        storage: &impl Storage,
         contribution_locator: &Locator,
         next_contribution_locator: &Locator,
     ) -> anyhow::Result<Vec<u8>> {
@@ -121,7 +121,7 @@ impl Initialization {
 mod tests {
     use crate::{
         commands::Initialization,
-        storage::{ContributionLocator, Locator, StorageLock},
+        storage::{ContributionLocator, Locator, StorageObject},
         testing::prelude::*,
     };
     use setup_utils::{blank_hash, calculate_hash, GenericArray};
@@ -138,8 +138,7 @@ mod tests {
         let number_of_chunks = TEST_ENVIRONMENT.number_of_chunks();
 
         // Define test storage.
-        let test_storage = test_storage(&TEST_ENVIRONMENT);
-        let mut storage = StorageLock::Write(test_storage.write().unwrap());
+        let mut storage = test_storage(&TEST_ENVIRONMENT);
 
         // Initialize the previous contribution hash with a no-op value.
         let mut previous_contribution_hash: GenericArray<u8, _> =

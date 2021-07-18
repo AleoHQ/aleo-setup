@@ -2,7 +2,7 @@ use crate::{
     authentication::Signature,
     commands::SigningKey,
     environment::Environment,
-    storage::{Locator, StorageLock},
+    storage::{Locator, Storage},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1, Phase1Parameters};
@@ -30,8 +30,8 @@ impl Computation {
     #[inline]
     pub(crate) fn run(
         environment: &Environment,
-        storage: &mut StorageLock,
-        signature: Arc<Box<dyn Signature>>,
+        storage: &mut impl Storage,
+        signature: Arc<dyn Signature>,
         contributor_signing_key: &SigningKey,
         challenge_locator: &Locator,
         response_locator: &Locator,
@@ -174,7 +174,7 @@ mod tests {
     use crate::{
         authentication::{Dummy, Signature},
         commands::{Computation, Initialization, Seed, SEED_LENGTH},
-        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, StorageLock},
+        storage::{ContributionLocator, ContributionSignatureLocator, Locator, Object, Storage, StorageObject},
         testing::prelude::*,
     };
     use setup_utils::calculate_hash;
@@ -189,14 +189,13 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
         // Define signature scheme.
-        let signature: Arc<Box<dyn Signature>> = Arc::new(Box::new(Dummy));
+        let signature: Arc<dyn Signature> = Arc::new(Dummy);
 
         // Define test parameters.
         let number_of_chunks = TEST_ENVIRONMENT_3.number_of_chunks();
 
         // Define test storage.
-        let test_storage = test_storage(&TEST_ENVIRONMENT_3);
-        let mut storage = StorageLock::Write(test_storage.write().unwrap());
+        let mut storage = test_storage(&TEST_ENVIRONMENT_3);
 
         // Generate a new challenge for the given parameters.
         let round_height = 0;

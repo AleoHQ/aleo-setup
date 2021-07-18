@@ -8,8 +8,8 @@ use crate::{
         LocatorPath,
         Object,
         RemoveAction,
+        Storage,
         StorageAction,
-        StorageLock,
         UpdateAction,
     },
     CoordinatorError,
@@ -87,7 +87,7 @@ impl Round {
     #[inline]
     pub(crate) fn new(
         environment: &Environment,
-        storage: &StorageLock,
+        storage: &mut impl Storage,
         round_height: u64,
         started_at: DateTime<Utc>,
         contributor_ids: Vec<Participant>,
@@ -382,7 +382,7 @@ impl Round {
     )]
     pub(crate) fn current_contribution_locator(
         &self,
-        storage: &StorageLock,
+        storage: &impl Storage,
         chunk_id: u64,
         verified: bool,
     ) -> Result<ContributionLocator, CoordinatorError> {
@@ -443,7 +443,7 @@ impl Round {
     )]
     pub(crate) fn next_contribution_locator(
         &self,
-        storage: &StorageLock,
+        storage: &impl Storage,
         chunk_id: u64,
     ) -> Result<ContributionLocator, CoordinatorError> {
         // Fetch the current round height.
@@ -499,7 +499,7 @@ impl Round {
     #[inline]
     pub(crate) fn next_contribution_file_signature_locator(
         &self,
-        storage: &StorageLock,
+        storage: &impl Storage,
         chunk_id: u64,
     ) -> Result<ContributionSignatureLocator, CoordinatorError> {
         // Fetch the current round height.
@@ -550,7 +550,7 @@ impl Round {
     pub(crate) fn try_lock_chunk(
         &mut self,
         environment: &Environment,
-        storage: &mut StorageLock,
+        storage: &mut impl Storage,
         chunk_id: u64,
         participant: &Participant,
     ) -> Result<LockedLocators, CoordinatorError> {
@@ -797,7 +797,7 @@ impl Round {
     /// Remove a contributor from the round.
     pub(crate) fn remove_contributor_unsafe(
         &mut self,
-        storage: &mut StorageLock,
+        storage: &mut impl Storage,
         contributor: &Participant,
         locked_chunks: &[u64],
         tasks: &[Task],
@@ -834,7 +834,7 @@ impl Round {
     #[inline]
     pub(crate) fn remove_locks_unsafe(
         &mut self,
-        storage: &mut StorageLock,
+        storage: &mut impl Storage,
         participant: &Participant,
         locked_chunks: &[u64],
     ) -> Result<(), CoordinatorError> {
@@ -974,7 +974,7 @@ impl Round {
     )]
     pub(crate) fn remove_chunk_contributions_unsafe(
         &mut self,
-        storage: &mut StorageLock,
+        storage: &mut impl Storage,
         participant: &Participant,
         tasks: &[Task],
     ) -> Result<(), CoordinatorError> {
@@ -1168,13 +1168,12 @@ mod tests {
         initialize_test_environment(&TEST_ENVIRONMENT);
 
         // Define test storage.
-        let test_storage = test_storage(&TEST_ENVIRONMENT);
-        let storage = StorageLock::Write(test_storage.write().unwrap());
+        let mut storage = test_storage(&TEST_ENVIRONMENT);
 
         let expected = test_round_0().unwrap();
         let candidate = Round::new(
             &TEST_ENVIRONMENT,
-            &storage,
+            &mut storage,
             0, /* height */
             *TEST_STARTED_AT,
             vec![],

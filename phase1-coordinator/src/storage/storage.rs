@@ -214,10 +214,6 @@ impl<'a, T> DerefMut for Lock<'a, T> {
     }
 }
 
-pub(crate) type StorageLock<'a> = Lock<'a, Box<dyn Storage>>;
-
-// pub type StorageWrite<'a> = RwLockWriteGuard<'a, Box<dyn Storage>>;
-
 // TODO (howardwu): Genericize this if necessary for remote objects.
 //  Alternatively, usage of temporary memory-backed local files can also work.
 pub type ObjectReader<'a> = RwLockReadGuard<'a, MmapMut>;

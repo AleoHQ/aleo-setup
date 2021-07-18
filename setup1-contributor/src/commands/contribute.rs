@@ -168,7 +168,7 @@ impl Contribute {
         }
 
         // Get total number of tokio tasks to generate.
-        let total_tasks = match self.disable_pipelining {
+        let n_concurrent_tasks = match self.disable_pipelining {
             true => 1,
             false => self.max_in_download_lane + self.max_in_process_lane + self.max_in_upload_lane,
         };
@@ -190,14 +190,14 @@ impl Contribute {
 
         let mut futures = vec![];
 
-        for i in 0..total_tasks {
+        for i in 0..n_concurrent_tasks {
             let delay_duration = Duration::seconds(DELAY_AFTER_ERROR_DURATION_SECS).to_std()?;
-            let mut cloned = self.clone_with_new_filenames(i);
+            let mut cloned_contribute = self.clone_with_new_filenames(i);
 
             let join_handle = tokio::task::spawn(async move {
                 // Run contributor loop.
                 loop {
-                    let result = cloned.run::<E>().await;
+                    let result = cloned_contribute.run::<E>().await;
                     match result {
                         Ok(_) => {
                             info!(
@@ -206,21 +206,23 @@ impl Contribute {
                         }
                         Err(err) => {
                             println!("Got error from run: {}, retrying...", err);
+                            tracing::error!("Error from contribution run: {}", err);
 
-                            if let Some(lock_response) = cloned.current_task.as_ref() {
-                                cloned
+                            if let Some(lock_response) = cloned_contribute.current_task.as_ref() {
+                                tracing::warn!("Retrying task {:?}", lock_response);
+                                cloned_contribute
                                     .remove_task_from_lane_if_exists(&PipelineLane::Download, &lock_response)
                                     .expect("Should have removed task from download lane");
 
-                                cloned
+                                cloned_contribute
                                     .remove_task_from_lane_if_exists(&PipelineLane::Upload, &lock_response)
                                     .expect("Should have removed task from upload lane");
 
-                                cloned
+                                cloned_contribute
                                     .remove_task_from_lane_if_exists(&PipelineLane::Process, &lock_response)
                                     .expect("Should have removed task from process lane");
 
-                                cloned.add_task_to_queue(lock_response.clone());
+                                cloned_contribute.add_task_to_queue(lock_response.clone());
                             }
                         }
                     }

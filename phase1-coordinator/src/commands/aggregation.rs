@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     objects::Round,
-    storage::{ContributionLocator, Locator, Object, ObjectReader, StorageLock},
+    storage::{ContributionLocator, Locator, Object, ObjectReader, Storage},
     CoordinatorError,
 };
 use phase1::{helpers::CurveKind, Phase1};
@@ -15,7 +15,7 @@ pub(crate) struct Aggregation;
 impl Aggregation {
     /// Runs aggregation for a given environment, storage, and round.
     #[inline]
-    pub(crate) fn run(environment: &Environment, storage: &mut StorageLock, round: &Round) -> anyhow::Result<()> {
+    pub(crate) fn run(environment: &Environment, storage: &mut impl Storage, round: &Round) -> anyhow::Result<()> {
         let start = Instant::now();
 
         // Fetch the round height.
@@ -95,7 +95,7 @@ impl Aggregation {
     #[inline]
     fn readers<'a>(
         environment: &Environment,
-        storage: &'a StorageLock<'a>,
+        storage: &'a impl Storage,
         round: &Round,
     ) -> anyhow::Result<Vec<ObjectReader<'a>>> {
         let mut readers = vec![];
@@ -143,10 +143,12 @@ impl Aggregation {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::{
         authentication::Dummy,
         commands::{Aggregation, Seed, SigningKey, SEED_LENGTH},
-        storage::{Locator, StorageLock},
+        storage::{Locator, Storage},
         testing::prelude::*,
         Coordinator,
     };
@@ -161,8 +163,7 @@ mod tests {
     fn test_aggregation_run() {
         initialize_test_environment(&TEST_ENVIRONMENT_3);
 
-        let coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Box::new(Dummy)).unwrap();
-        let test_storage = coordinator.storage();
+        let mut coordinator = Coordinator::new(TEST_ENVIRONMENT_3.clone(), Arc::new(Dummy)).unwrap();
 
         let contributor = Lazy::force(&TEST_CONTRIBUTOR_ID).clone();
         let contributor_signing_key: SigningKey = "secret_key".to_string();
@@ -171,12 +172,9 @@ mod tests {
         let verifier_signing_key: SigningKey = "secret_key".to_string();
 
         {
-            // Acquire the storage write lock.
-            let mut storage = StorageLock::Write(test_storage.write().unwrap());
-
             // Run initialization.
             info!("Initializing ceremony");
-            let round_height = coordinator.run_initialization(&mut storage, Utc::now()).unwrap();
+            let round_height = coordinator.run_initialization(Utc::now()).unwrap();
             info!("Initialized ceremony");
 
             // Check current round height is now 0.
@@ -185,7 +183,7 @@ mod tests {
             let contributors = vec![contributor.clone()];
             let verifiers = vec![verifier.clone()];
             coordinator
-                .next_round(&mut storage, *TEST_STARTED_AT, contributors, verifiers)
+                .next_round(*TEST_STARTED_AT, contributors, verifiers)
                 .unwrap();
         }
 
@@ -201,11 +199,8 @@ mod tests {
         // Iterate over all chunk IDs.
         for chunk_id in 0..number_of_chunks {
             {
-                // Acquire the storage write lock.
-                let mut storage = StorageLock::Write(test_storage.write().unwrap());
-
                 // Acquire the lock as contributor.
-                let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &contributor.clone());
+                let try_lock = coordinator.try_lock_chunk(chunk_id, &contributor.clone());
                 if try_lock.is_err() {
                     error!(
                         "Failed to acquire lock as contributor {:?}\n{}",
@@ -234,11 +229,8 @@ mod tests {
                     contribute.unwrap();
                 }
 
-                // Acquire the storage write lock.
-                let mut storage = StorageLock::Write(test_storage.write().unwrap());
-
                 // Add the contribution as the contributor.
-                let contribute = coordinator.add_contribution(&mut storage, chunk_id, &contributor.clone());
+                let contribute = coordinator.add_contribution(chunk_id, &contributor.clone());
                 if contribute.is_err() {
                     error!(
                         "Failed to add contribution as contributor {:?}\n{}",
@@ -249,11 +241,8 @@ mod tests {
                 }
             }
             {
-                // Acquire the storage write lock.
-                let mut storage = StorageLock::Write(test_storage.write().unwrap());
-
                 // Acquire the lock as the verifier.
-                let try_lock = coordinator.try_lock_chunk(&mut storage, chunk_id, &verifier.clone());
+                let try_lock = coordinator.try_lock_chunk(chunk_id, &verifier.clone());
                 if try_lock.is_err() {
                     error!(
                         "Failed to acquire lock as verifier {:?}\n{}",
@@ -275,11 +264,8 @@ mod tests {
                     verify.unwrap();
                 }
 
-                // Acquire the storage write lock.
-                let mut storage = StorageLock::Write(test_storage.write().unwrap());
-
                 // Run verification as the verifier.
-                let verify = coordinator.verify_contribution(&mut storage, chunk_id, &verifier.clone());
+                let verify = coordinator.verify_contribution(chunk_id, &verifier.clone());
                 if verify.is_err() {
                     error!(
                         "Failed to run verification as verifier {:?}\n{}",
@@ -296,11 +282,10 @@ mod tests {
 
         // Aggregate.
         {
-            // Obtain the storage lock.
-            let mut storage = StorageLock::Write(test_storage.write().unwrap());
+            let storage = coordinator.storage_mut();
 
             // Run aggregation on the round.
-            Aggregation::run(&TEST_ENVIRONMENT_3, &mut storage, &round).unwrap();
+            Aggregation::run(&TEST_ENVIRONMENT_3, storage, &round).unwrap();
 
             // Fetch the round locator for the given round.
             let round_locator = Locator::RoundFile { round_height };
