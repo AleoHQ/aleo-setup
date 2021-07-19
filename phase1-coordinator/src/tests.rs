@@ -2173,6 +2173,83 @@ fn participant_lock_timeout_drop_test() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Test that a participant who hasn't accepted a task for longer
+/// than [Environment::participant_acceptance_timeout] is dropped from the
+/// round by the coordinator.
+#[test]
+#[serial]
+fn participant_acceptance_timeout_drop_test() -> anyhow::Result<()> {
+    let time = Arc::new(MockTimeSource::new(Utc::now()));
+
+    let parameters = Parameters::Custom(Settings::new(
+        ContributionMode::Chunked,
+        ProvingSystem::Groth16,
+        CurveKind::Bls12_377,
+        6,  /* power */
+        16, /* batch_size */
+        16, /* chunk_size */
+    ));
+
+    let testing_deployment: Testing = Testing::from(parameters)
+        .contributor_seen_timeout(chrono::Duration::minutes(20))
+        .participant_lock_timeout(chrono::Duration::minutes(20))
+        .participant_acceptance_timeout(chrono::Duration::minutes(30));
+
+    let environment = initialize_test_environment(&Environment::from(testing_deployment));
+
+    // Instantiate a coordinator.
+    let coordinator = Coordinator::new_with_time(environment, Box::new(Dummy), time.clone())?;
+
+    // Initialize the ceremony to round 0.
+    coordinator.initialize()?;
+
+    let (contributor1, contributor_signing_key1, seed1) = create_contributor("1");
+    let (verifier, _verifier_signing_key) = create_verifier("1");
+
+    coordinator.add_to_queue(contributor1.clone(), 10)?;
+    coordinator.add_to_queue(verifier.clone(), 10)?;
+
+    // Update the ceremony to round 1.
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert_eq!(1, coordinator.current_verifiers().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    coordinator.contribute(&contributor1, &contributor_signing_key1, &seed1)?;
+
+    // increment the time by 15 minutes, and send a heartbeat from
+    // the contributor
+    time.update(|prev| prev + chrono::Duration::minutes(15));
+
+    coordinator.heartbeat(&contributor1).unwrap();
+
+    // XXX (julesdesmit): im getting a lock here for the verifier, because
+    // dropping it causes a panic. this seems wrong and should probably
+    // be filed/solved
+    coordinator.try_lock(&verifier)?;
+
+    coordinator.update()?;
+
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert_eq!(1, coordinator.current_verifiers().len());
+    assert!(coordinator.dropped_participants().is_empty());
+
+    // push the time past the timout
+    time.update(|prev| prev + chrono::Duration::minutes(16));
+    coordinator.update()?;
+
+    // Check that replacement contributor has been added, and that the
+    // contributor1 has been dropped.
+    assert_eq!(1, coordinator.current_contributors().len());
+    assert_eq!(1, coordinator.current_verifiers().len());
+    assert_eq!(1, coordinator.dropped_participants().len());
+    assert!(coordinator.current_contributors().get(0).unwrap().0 != contributor1);
+    assert_eq!(&contributor1, coordinator.dropped_participants().get(0).unwrap().id());
+
+    Ok(())
+}
+
 #[test]
 #[serial]
 fn round_on_groth16_bls12_377() {

@@ -82,6 +82,8 @@ pub struct ParticipantInfo {
     dropped_at: Option<DateTime<Utc>>,
     /// A map of chunk IDs to locks on chunks that this participant currently holds.
     locked_chunks: HashMap<u64, ChunkLock>,
+    /// The timestamp when this participant last was released a lock.
+    last_released: Option<DateTime<Utc>>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is assigned to compute.
     assigned_tasks: LinkedList<Task>,
     /// The list of (chunk ID, contribution ID) tasks that this participant is currently computing.
@@ -115,6 +117,7 @@ impl ParticipantInfo {
             started_at: None,
             finished_at: None,
             dropped_at: None,
+            last_released: None,
             locked_chunks: HashMap::new(),
             assigned_tasks: LinkedList::new(),
             pending_tasks: LinkedList::new(),
@@ -678,6 +681,9 @@ impl ParticipantInfo {
         // Update the last seen time.
         self.last_seen = time.utc_now();
 
+        // Update the last time a lock was released.
+        self.last_released = Some(time.utc_now());
+
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&task.chunk_id());
 
@@ -745,6 +751,9 @@ impl ParticipantInfo {
 
         // Update the last seen time.
         self.last_seen = time.utc_now();
+
+        // Update the last time a lock was released.
+        self.last_released = Some(time.utc_now());
 
         // Remove the given chunk ID from the locked chunks.
         self.locked_chunks.remove(&chunk_id);
@@ -2725,6 +2734,7 @@ impl CoordinatorState {
             .update_contributor_seen_drops(time)?
             .into_iter()
             .chain(self.update_participant_lock_drops(time)?.into_iter())
+            .chain(self.update_participant_accepted_drops(time)?.into_iter())
             .collect())
     }
 
@@ -2795,6 +2805,46 @@ impl CoordinatorState {
                         elapsed.num_minutes()
                     );
                     // Drop the participant.
+                    Some(self.drop_participant(participant, time))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// This will drop a participant if it hasn't accepted a task for more than
+    /// [crate::environment::Environment]'s `participant_acceptance_timeout`.
+    fn update_participant_accepted_drops(
+        &mut self,
+        time: &dyn TimeSource,
+    ) -> Result<Vec<DropParticipant>, CoordinatorError> {
+        let participant_acceptance_timeout = self.environment.participant_acceptance_timeout();
+        let now = time.utc_now();
+
+        self.current_contributors
+            .clone()
+            .iter()
+            .chain(self.current_verifiers.clone().iter())
+            .filter_map(|(participant, participant_info)| {
+                // Ensure we get the proper elapsed time since the last task was assigned.
+                // If no tasks have been assigned yet, we measure from the starting time.
+                let last_seen = participant_info.last_released.unwrap_or(participant_info.first_seen);
+                let elapsed = now - last_seen;
+
+                if elapsed > participant_acceptance_timeout
+                    && participant_info.locked_chunks.is_empty()
+                    && !participant_info.assigned_tasks.is_empty()
+                    && !self.is_coordinator_contributor(&participant)
+                {
+                    tracing::info!(
+                        "Dropping participant {} because it has exceeded the maximum ({} minutes) allowed time \
+                    since it has last accepted a task from the coordinator (last accepted {} minutes ago).",
+                        participant,
+                        participant_acceptance_timeout.num_minutes(),
+                        elapsed.num_minutes()
+                    );
+
                     Some(self.drop_participant(participant, time))
                 } else {
                     None

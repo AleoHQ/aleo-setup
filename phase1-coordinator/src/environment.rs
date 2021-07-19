@@ -240,6 +240,11 @@ pub struct Environment {
     /// coordinator.
     #[serde_as(as = "DurationSecondsWithFrac<String>")]
     participant_lock_timeout: chrono::Duration,
+    /// Returns the maximum duration a participant can go without
+    /// accepting a task before it will be dropped from the ceremony by
+    /// the coordinator.
+    #[serde_as(as = "DurationSecondsWithFrac<String>")]
+    participant_acceptance_timeout: chrono::Duration,
     /// The number of drops tolerated by a participant before banning them from future rounds.
     participant_ban_threshold: u16,
     /// The setting to allow current contributors to join the queue for the next round.
@@ -373,6 +378,15 @@ impl Environment {
     ///
     pub const fn participant_lock_timeout(&self) -> chrono::Duration {
         self.participant_lock_timeout
+    }
+
+    ///
+    /// Returns the maximum duration a contributor can go without
+    /// accepting a task before it will be dropped from
+    /// the ceremony by the coordinator.
+    ///
+    pub const fn participant_acceptance_timeout(&self) -> chrono::Duration {
+        self.participant_acceptance_timeout
     }
 
     ///
@@ -537,6 +551,12 @@ impl Testing {
         deployment.environment.participant_lock_timeout = participant_lock_timeout;
         deployment
     }
+
+    pub fn participant_acceptance_timeout(&self, participant_acceptance_timeout: chrono::Duration) -> Self {
+        let mut deployment = self.clone();
+        deployment.environment.participant_acceptance_timeout = participant_acceptance_timeout;
+        deployment
+    }
 }
 
 impl From<Parameters> for Testing {
@@ -573,6 +593,7 @@ impl std::default::Default for Testing {
                 contributor_seen_timeout: chrono::Duration::minutes(5),
                 verifier_seen_timeout: chrono::Duration::minutes(15),
                 participant_lock_timeout: chrono::Duration::minutes(20),
+                participant_acceptance_timeout: chrono::Duration::minutes(15),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -675,6 +696,7 @@ impl std::default::Default for Development {
                 contributor_seen_timeout: chrono::Duration::minutes(5),
                 verifier_seen_timeout: chrono::Duration::minutes(15),
                 participant_lock_timeout: chrono::Duration::minutes(20),
+                participant_acceptance_timeout: chrono::Duration::minutes(15),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: true,
                 allow_current_verifiers_in_queue: true,
@@ -771,6 +793,7 @@ impl std::default::Default for Production {
                 contributor_seen_timeout: chrono::Duration::minutes(5),
                 verifier_seen_timeout: chrono::Duration::minutes(15),
                 participant_lock_timeout: chrono::Duration::minutes(20),
+                participant_acceptance_timeout: chrono::Duration::minutes(15),
                 participant_ban_threshold: 5,
                 allow_current_contributors_in_queue: false,
                 allow_current_verifiers_in_queue: true,
